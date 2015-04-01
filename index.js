@@ -2,7 +2,8 @@
 var gutil = require('gulp-util'),
     through = require('through2'),
     useref = require('node-useref'),
-    path = require('path');
+    path = require('path'),
+    fs = require('fs');
 
 function getSearchPaths(cwd, searchPath, filepath) {
     // Check for multiple search paths within the array
@@ -54,7 +55,8 @@ module.exports.assets = function (opts) {
         streams = Array.prototype.slice.call(arguments, 1),
         restoreStream = through.obj(),
         unprocessed = 0,
-        end = false;
+        end = false,
+        dest = opts.dest;
 
     var assetStream = through.obj(function (file, enc, cb) {
         var output = useref(file.contents.toString());
@@ -68,6 +70,8 @@ module.exports.assets = function (opts) {
             }
 
             Object.keys(files).forEach(function (name) {
+                if(dest && fs.existsSync(dest+name)) return;
+
                 var src,
                     globs,
                     searchPaths,
@@ -87,20 +91,33 @@ module.exports.assets = function (opts) {
                 }
 
                 // Get relative file paths and join with search paths to send to vinyl-fs
+                var gFiles = [];
                 globs = filepaths
                     .filter(isRelativeUrl)
                     .map(function (filepath) {
                         if (searchPaths.length) {
                             return searchPaths.map(function (searchPath) {
-                                return getSearchPaths(file.cwd, searchPath, filepath);
+                                var globFile = getSearchPaths(file.cwd, searchPath, filepath);
+
+                                if (gFiles.indexOf(filepath) == -1) {
+                                    gFiles.push(filepath);
+
+                                    return globFile;
+                                }
                             });
                         } else {
-                            return path.join(file.base, filepath);
+                            var globFile = path.join(file.base, filepath);
+
+                            if (gFiles.indexOf(filepath) == -1) {
+                                gFiles.push(filepath);
+
+                                return globFile;
+                            }
                         }
                     });
 
                 // Flatten nested array before giving it to vinyl-fs
-                src = vfs.src(_.flatten(globs, true), {
+                src = vfs.src(_.flatten(globs), {
                     base: file.base,
                     nosort: true,
                     nonull: true
